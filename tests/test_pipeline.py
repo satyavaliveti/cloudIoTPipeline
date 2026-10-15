@@ -28,7 +28,10 @@ def test_clean_rejects_outlier() -> None:
 
 
 def test_aggregate_groups_hourly() -> None:
-    records = [TelemetryRecord.model_validate(payload(20)), TelemetryRecord.model_validate(payload(24))]
+    records = [
+        TelemetryRecord.model_validate(payload(20)),
+        TelemetryRecord.model_validate(payload(24)),
+    ]
     result = aggregate(records)
     assert len(result) == 1
     assert result[0].sample_count == 2

@@ -44,7 +44,7 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, list[dict[str, st
             save_records(cleaned)
             save_aggregates(aggregate(cleaned))
         except Exception:
-            # Raising makes Firehose retry the entire batch instead of silently losing database writes.
+            # Raising makes Firehose retry instead of silently losing database writes.
             logger.exception("Database write failed")
             raise
 

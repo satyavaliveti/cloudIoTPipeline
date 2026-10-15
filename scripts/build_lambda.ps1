@@ -11,6 +11,8 @@ python -m pip install `
     "boto3>=1.35,<2" "fastapi>=0.115,<1" "mangum>=0.19,<1" `
     "pydantic>=2.10,<3" "pydantic-settings>=2.6,<3" `
     "psycopg[binary,pool]>=3.2,<4" `
+    --platform manylinux2014_x86_64 --python-version 3.12 `
+    --implementation cp --only-binary=:all: `
     --target $Build --upgrade
 Copy-Item "$Root\app" $Build -Recurse
 Copy-Item "$Root\db" $Build -Recurse
