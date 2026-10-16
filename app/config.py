@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     aws_region: str = "us-east-1"
     firehose_stream_name: str = "iot-telemetry"
+    telemetry_bucket: str | None = None
     database_url: str = "postgresql://iot:iot@localhost:5432/iot"
     local_processing: bool = False
 

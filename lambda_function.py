@@ -3,9 +3,15 @@ import json
 import logging
 from typing import Any
 
-from app.db import ensure_schema, save_aggregates, save_records
+from app.db import (
+    detect_and_update_baselines,
+    ensure_schema,
+    save_aggregates,
+    save_records,
+    security_events_for_records,
+)
 from app.models import TelemetryRecord
-from app.pipeline import aggregate, clean, to_wire
+from app.pipeline import aggregate, clean, store_security_events, to_wire
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -41,8 +47,11 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, list[dict[str, st
     if cleaned:
         try:
             ensure_schema()
-            save_records(cleaned)
-            save_aggregates(aggregate(cleaned))
+            inserted = save_records(cleaned)
+            detect_and_update_baselines(cleaned)
+            save_aggregates(aggregate(inserted))
+            # Existing alerts are loaded too, making an S3 retry safe and idempotent.
+            store_security_events(security_events_for_records(cleaned))
         except Exception:
             # Raising makes Firehose retry instead of silently losing database writes.
             logger.exception("Database write failed")

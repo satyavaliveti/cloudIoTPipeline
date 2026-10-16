@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Query, status
 
 from app.config import Settings, get_settings
-from app.db import close_pool, healthcheck, latest_records
+from app.db import close_pool, healthcheck, latest_records, latest_security_events
 from app.models import IngestResponse, TelemetryIn
 from app.pipeline import Publisher
 
@@ -74,5 +74,16 @@ def get_telemetry(
 ) -> list[dict]:
     try:
         return latest_records(device_id, limit)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="database unavailable") from exc
+
+
+@app.get("/v1/security-events")
+def get_security_events(
+    device_id: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 100,
+) -> list[dict]:
+    try:
+        return latest_security_events(device_id, limit)
     except Exception as exc:
         raise HTTPException(status_code=503, detail="database unavailable") from exc

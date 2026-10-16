@@ -30,6 +30,10 @@ data "aws_subnets" "default" {
   }
 }
 
+data "aws_route_tables" "default" {
+  vpc_id = data.aws_vpc.default.id
+}
+
 data "aws_caller_identity" "current" {}
 
 resource "random_password" "db" {
@@ -115,6 +119,13 @@ resource "aws_vpc_endpoint" "firehose" {
   private_dns_enabled = true
 }
 
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = data.aws_vpc.default.id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = data.aws_route_tables.default.ids
+}
+
 resource "aws_db_subnet_group" "main" {
   name       = var.project_name
   subnet_ids = data.aws_subnets.default.ids
@@ -153,15 +164,22 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
 }
 
-resource "aws_iam_role_policy" "api_firehose" {
+resource "aws_iam_role_policy" "lambda_data_access" {
   role = aws_iam_role.lambda.id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
-      Resource = aws_kinesis_firehose_delivery_stream.telemetry.arn
-    }]
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+        Resource = aws_kinesis_firehose_delivery_stream.telemetry.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${aws_s3_bucket.telemetry.arn}/security-events/*"
+      }
+    ]
   })
 }
 
@@ -176,7 +194,8 @@ resource "aws_lambda_function" "transform" {
   memory_size      = 512
   environment {
     variables = {
-      DATABASE_URL = "postgresql://iot:${random_password.db.result}@${aws_db_instance.postgres.address}:5432/iot"
+      DATABASE_URL    = "postgresql://iot:${random_password.db.result}@${aws_db_instance.postgres.address}:5432/iot"
+      TELEMETRY_BUCKET = aws_s3_bucket.telemetry.id
     }
   }
   vpc_config {
@@ -205,7 +224,7 @@ resource "aws_lambda_function" "api" {
     subnet_ids         = data.aws_subnets.default.ids
     security_group_ids = [aws_security_group.lambda.id]
   }
-  depends_on = [aws_vpc_endpoint.firehose]
+  depends_on = [aws_vpc_endpoint.firehose, aws_vpc_endpoint.s3]
 }
 
 resource "aws_iam_role" "firehose" {

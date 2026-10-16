@@ -7,8 +7,9 @@ from typing import Any
 import boto3
 
 from app.config import get_settings
-from app.db import save_records
+from app.db import detect_and_update_baselines, save_aggregates, save_records
 from app.models import Aggregate, TelemetryIn, TelemetryRecord
+from app.security import SecurityEvent
 
 BOUNDS = {
     "temperature": (-100.0, 200.0),
@@ -60,7 +61,9 @@ class Publisher:
         records = [TelemetryRecord(**item.model_dump()) for item in items]
         if self.settings.local_processing:
             cleaned = [clean(record.model_dump()) for record in records]
-            save_records(cleaned)
+            inserted = save_records(cleaned)
+            detect_and_update_baselines(cleaned)
+            save_aggregates(aggregate(inserted))
             return len(cleaned), [str(record.event_id) for record in cleaned]
 
         response = self.client.put_record_batch(
@@ -84,3 +87,19 @@ def json_default(value: Any) -> str:
 
 def aggregate_to_json(item: Aggregate) -> str:
     return json.dumps(item.model_dump(), default=json_default)
+
+
+def store_security_events(events: list[SecurityEvent]) -> None:
+    settings = get_settings()
+    if not events or not settings.telemetry_bucket:
+        return
+    client = boto3.client("s3", region_name=settings.aws_region)
+    for event in events:
+        date = event.detected_at.astimezone(UTC).strftime("%Y/%m/%d")
+        client.put_object(
+            Bucket=settings.telemetry_bucket,
+            Key=f"security-events/{date}/{event.event_id}.json",
+            Body=(event.model_dump_json() + "\n").encode(),
+            ContentType="application/x-ndjson",
+            ServerSideEncryption="AES256",
+        )
